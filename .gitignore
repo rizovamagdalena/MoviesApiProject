@@ -1,0 +1,31 @@
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio files
+.vs/
+*.vscode/
+
+# Rider files
+.idea/
+
+# Resharper
+_ReSharper*/
+*.DotSettings.user
+
+# NPM / Node
+node_modules/
+
+# Logs
+*.log
+
+# Others
+*.db
+*.bak
