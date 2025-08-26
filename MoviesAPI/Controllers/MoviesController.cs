@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MoviesAPI.Models;
 using MoviesAPI.Repositories.Interface;
+using System.Collections.Generic;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -114,7 +115,7 @@ namespace MoviesAPI.Controllers
 
         // POST api/movies/futuremovies
         [HttpPost("futuremovies")]
-        public async Task<ActionResult> Post([FromBody] FutureMovie movie)
+        public async Task<ActionResult> Post([FromBody] CreateFutureMovie movie)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
@@ -134,5 +135,46 @@ namespace MoviesAPI.Controllers
             var result = await _movieRepository.DeleteFutureMovieAsync(id);
             return Ok(result);
         }
+
+        // GET: /api/movies/5/rating/3
+        [HttpGet("{idMovie}/rating/{idUser}")]
+        public async Task<ActionResult<int>> GetRatingOfUserForMovie(long idMovie, long idUser)
+        {
+            var rating = await _movieRepository.GetRatingOfUserForMovieAsync(idMovie, idUser);
+            if (rating == null)
+                return NotFound();
+
+            return Ok(rating);
+        }
+
+        // GET: /api/movies/toprated/4
+        [HttpGet("toprated/{n}")]
+        public async Task<ActionResult<List<Movie>>> GetTopNRated(int n)
+        {
+            var movies = await _movieRepository.GetTopNMoviesAsync(n);
+
+            if (movies == null || movies.Count == 0)
+                return NotFound();
+
+            return Ok(movies);
+        }
+
+
+        // PUT: /api/movies/5/rating
+        [HttpPut("{movieId}/rating")]
+        public async Task<ActionResult> UpdateRating(long movieId, [FromQuery] long userId, [FromQuery] int rating)
+        {
+            if (rating < 1 || rating > 10)
+                return BadRequest("Rating must be between 1 and 10.");
+
+            var success = await _movieRepository.UpsertRating(movieId, userId, rating);
+
+            if (!success)
+                return StatusCode(500, "Failed to save rating.");
+
+            return Ok(new { success=true,message= "Rating saved successfully." });
+        }
+
+
     }
 }

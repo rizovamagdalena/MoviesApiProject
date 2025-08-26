@@ -30,8 +30,14 @@ namespace MoviesAPI.Repositories.Implementation
                            GROUP BY m.id, m.name, m.duration, m.release_date, m.amount, m.poster_path, m.plot, m.actors, m.directors
                            ORDER BY m.id;";
 
-            var result = await conn.QueryAsync<Movie>(sql);
-            return result;
+            var movies = await conn.QueryAsync<Movie>(sql);
+
+            foreach (var movie in movies)
+            {
+                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+            }
+
+            return movies;
         }
 
         public async Task<IEnumerable<Movie>> GetMoviesByGenreAsync(string genre)
@@ -52,8 +58,15 @@ namespace MoviesAPI.Repositories.Implementation
                            GROUP BY m.id, m.name, m.duration, m.release_date, m.amount, m.poster_path, m.plot, m.actors, m.directors
                            ORDER BY m.id;";
 
-            var result = await conn.QueryAsync<Movie>(sql, new { GenreName = genre });
-            return result;
+            var movies = await conn.QueryAsync<Movie>(sql, new { GenreName = genre });
+
+            foreach (var movie in movies)
+            {
+                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+
+            }
+
+            return movies;
         }
 
         public async Task<Movie> GetMovieAsync(long id)
@@ -72,6 +85,11 @@ namespace MoviesAPI.Repositories.Implementation
 
 
             var movie = await conn.QueryFirstOrDefaultAsync<Movie>(sql, new { Id=id });
+
+            if (movie != null)
+            {
+                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+            }
 
             return movie;
         }
@@ -231,7 +249,7 @@ namespace MoviesAPI.Repositories.Implementation
             return result;
         }
 
-        public async Task<int> CreateFutureMovieAsync(FutureMovie movie)
+        public async Task<int> CreateFutureMovieAsync(CreateFutureMovie movie)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
 
@@ -269,6 +287,120 @@ namespace MoviesAPI.Repositories.Implementation
             var genres = await conn.QueryAsync<string>(sql);
             return genres.ToList();
         }
+
+        public async Task<double?> GetRatingOfAMovieAsync(long movieId)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+            string sql = @"
+                WITH movie_stats AS (
+                    SELECT 
+                        m.id,
+                        COUNT(r.rating) AS rating_count,
+                        AVG(r.rating) AS avg_rating
+                    FROM movie m
+                    LEFT JOIN movieratings r ON m.id = r.movie_id
+                    WHERE m.id = @MovieId
+                    GROUP BY m.id
+                ),
+                global_avg AS (
+                    SELECT AVG(rating) AS C FROM movieratings
+                ),
+                user_count AS (
+                    SELECT COUNT(*) AS total_users FROM users
+                )
+                SELECT 
+                    ((ms.rating_count::float / (ms.rating_count + uc.total_users * 0.55)) * ms.avg_rating
+                     + ((uc.total_users * 0.55) / (ms.rating_count + uc.total_users * 0.55)) * ga.C) AS weighted_rating
+                FROM movie_stats ms
+                CROSS JOIN global_avg ga
+                CROSS JOIN user_count uc;
+            ";
+
+            var weightedRating = await conn.ExecuteScalarAsync<double?>(sql, new { MovieId = movieId });
+
+            return weightedRating;
+        }
+
+
+        public async Task<int?> GetRatingOfUserForMovieAsync(long movieId, long userId)
+        {
+
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+            string sql = @"
+                SELECT rating 
+                FROM movieratings
+                WHERE movie_id = @MovieId AND user_id = @UserId;
+            ";
+
+
+            var result = await conn.ExecuteScalarAsync<int>(sql, new { MovieId = movieId,  UserId=userId });
+
+            return result;
+
+        }
+
+
+
+        public async Task<bool> UpsertRating(long movieId, long userId, int rating)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+                    string sql = @"
+                INSERT INTO movieratings (movie_id, user_id, rating)
+                VALUES (@MovieId, @UserId, @Rating)
+                ON CONFLICT (movie_id, user_id) 
+                DO UPDATE SET rating = EXCLUDED.rating;
+            ";
+
+            var rows = await conn.ExecuteAsync(sql, new { MovieId = movieId, UserId = userId, Rating = rating });
+            return rows > 0;
+        }
+
+
+
+        public async Task<List<Movie>> GetTopNMoviesAsync(int n)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+            string sql = @"
+                WITH movie_stats AS (
+                    SELECT 
+                        m.*,
+                        COUNT(r.rating) AS rating_count,
+                        AVG(r.rating) AS avg_rating
+                    FROM movie m
+                    LEFT JOIN movieratings r ON m.id = r.movie_id
+                    GROUP BY m.id
+                ),
+                global_avg AS (
+                    SELECT AVG(rating) AS C FROM movieratings
+                ),
+                user_count AS (
+                    SELECT COUNT(*) AS total_users FROM users
+                )
+                SELECT 
+                    ms.*,
+                    ((ms.rating_count::float / (ms.rating_count + uc.total_users * 0.55)) * ms.avg_rating
+                     + ((uc.total_users * 0.55) / (ms.rating_count + uc.total_users * 0.55)) * ga.C) AS weighted_rating
+                FROM movie_stats ms
+                CROSS JOIN global_avg ga
+                CROSS JOIN user_count uc
+                ORDER BY weighted_rating DESC
+                LIMIT @Limit;
+            ";
+
+            var movies = (await conn.QueryAsync<Movie>(sql, new { Limit = n })).ToList();
+
+            foreach (var movie in movies)
+            {
+                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+            }
+
+            return movies;
+        }
+
     }
 
 }

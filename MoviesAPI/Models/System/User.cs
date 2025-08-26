@@ -4,6 +4,8 @@ namespace MoviesAPI.Models.System
 {
     public class User
     {
+        public int Id { get; set; }
+
         [Required]
         [Display(Name = "Username")]
         public string Username { get; set; }
@@ -35,6 +37,7 @@ namespace MoviesAPI.Models.System
 
     public class UpdateUser
     {
+        public int Id { get; set; }
         public string Name { get; set; }
         public string Phone { get; set; }
         public string Username { get; set; }
