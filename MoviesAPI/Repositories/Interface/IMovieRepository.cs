@@ -16,10 +16,10 @@ namespace MoviesAPI.Repositories.Interface
         Task<FutureMovie> GetFutureMovieAsync(long id);
         Task<int> DeleteFutureMovieAsync(long id);
         Task<List<string>> GettAllGenresAsync();
-        Task<double?> GetRatingOfAMovieAsync(long movieId);
-        Task<int?> GetRatingOfUserForMovieAsync(long movieId, long userId);
+        Task<(decimal WeightedRating, List<MovieRating> Ratings)> GetRatingsForMovieAsync(long movieId);
+        Task<MovieRating?> GetRatingOfUserForMovieAsync(long movieId, long userId);
         Task<List<Movie>> GetTopNMoviesAsync(int n);
-        Task<bool> UpsertRating(long movieId, long userId, int rating);
+        Task<bool> UpsertRating(CreateRating rating);
 
     }
 }

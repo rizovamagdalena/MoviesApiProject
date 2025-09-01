@@ -30,11 +30,13 @@ namespace MoviesAPI.Repositories.Implementation
                            GROUP BY m.id, m.name, m.duration, m.release_date, m.amount, m.poster_path, m.plot, m.actors, m.directors
                            ORDER BY m.id;";
 
-            var movies = await conn.QueryAsync<Movie>(sql);
+            var movies = (await conn.QueryAsync<Movie>(sql)).ToList();
 
             foreach (var movie in movies)
             {
-                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+                (decimal weightedRating, List<MovieRating> ratings) = await GetRatingsForMovieAsync(movie.Id);
+                movie.Rating = weightedRating;
+                movie.Ratings = ratings;
             }
 
             return movies;
@@ -62,7 +64,9 @@ namespace MoviesAPI.Repositories.Implementation
 
             foreach (var movie in movies)
             {
-                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+                (decimal weightedRating, List<MovieRating> ratings) = await GetRatingsForMovieAsync(movie.Id);
+                movie.Rating = weightedRating;
+                movie.Ratings = ratings;
 
             }
 
@@ -88,7 +92,9 @@ namespace MoviesAPI.Repositories.Implementation
 
             if (movie != null)
             {
-                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+                (decimal weightedRating, List<MovieRating> ratings) = await GetRatingsForMovieAsync(movie.Id);
+                movie.Rating = weightedRating;
+                movie.Ratings = ratings;
             }
 
             return movie;
@@ -288,20 +294,29 @@ namespace MoviesAPI.Repositories.Implementation
             return genres.ToList();
         }
 
-        public async Task<double?> GetRatingOfAMovieAsync(long movieId)
+        public async Task<(decimal WeightedRating, List<MovieRating> Ratings)> GetRatingsForMovieAsync(long movieId)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
 
-            string sql = @"
+            string ratingsSql = @"
+                SELECT r.id AS Id, r.user_id AS UserId, r.movie_id AS MovieId, r.rating AS Rating, r.comment AS Comment,
+                       u.username AS UserName
+                FROM movieratings r
+                JOIN users u ON r.user_id = u.id
+                WHERE r.movie_id = @MovieId;
+            ";
+            var ratings = (await conn.QueryAsync<MovieRating>(ratingsSql, new { MovieId = movieId })).ToList();
+
+
+
+
+            string weightedSql = @"
                 WITH movie_stats AS (
                     SELECT 
-                        m.id,
                         COUNT(r.rating) AS rating_count,
                         AVG(r.rating) AS avg_rating
-                    FROM movie m
-                    LEFT JOIN movieratings r ON m.id = r.movie_id
-                    WHERE m.id = @MovieId
-                    GROUP BY m.id
+                    FROM movieratings r
+                    WHERE r.movie_id = @MovieId
                 ),
                 global_avg AS (
                     SELECT AVG(rating) AS C FROM movieratings
@@ -317,25 +332,29 @@ namespace MoviesAPI.Repositories.Implementation
                 CROSS JOIN user_count uc;
             ";
 
-            var weightedRating = await conn.ExecuteScalarAsync<double?>(sql, new { MovieId = movieId });
+            var weightedRating = await conn.ExecuteScalarAsync<decimal?>(weightedSql, new { MovieId = movieId }) ?? 0;
 
-            return weightedRating;
+
+            return (weightedRating, ratings);
+
         }
 
 
-        public async Task<int?> GetRatingOfUserForMovieAsync(long movieId, long userId)
+        public async Task<MovieRating?> GetRatingOfUserForMovieAsync(long movieId, long userId)
         {
 
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
 
             string sql = @"
-                SELECT rating 
-                FROM movieratings
-                WHERE movie_id = @MovieId AND user_id = @UserId;
+                SELECT r.id AS Id, r.user_id AS UserId, r.movie_id AS MovieId, r.rating AS Rating, r.comment AS Comment,
+                       u.username AS UserName
+                FROM movieratings r
+                JOIN users u ON r.user_id = u.id
+                WHERE r.movie_id = @MovieId AND r.user_id = @UserId;
             ";
 
 
-            var result = await conn.ExecuteScalarAsync<int>(sql, new { MovieId = movieId,  UserId=userId });
+            var result = await conn.QueryFirstOrDefaultAsync<MovieRating>(sql, new { MovieId = movieId,  UserId=userId });
 
             return result;
 
@@ -343,18 +362,25 @@ namespace MoviesAPI.Repositories.Implementation
 
 
 
-        public async Task<bool> UpsertRating(long movieId, long userId, int rating)
+        public async Task<bool> UpsertRating(CreateRating rating)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
 
                     string sql = @"
-                INSERT INTO movieratings (movie_id, user_id, rating)
-                VALUES (@MovieId, @UserId, @Rating)
+                INSERT INTO movieratings (movie_id, user_id, rating,comment)
+                VALUES (@MovieId, @UserId, @Rating,@Comment)
                 ON CONFLICT (movie_id, user_id) 
-                DO UPDATE SET rating = EXCLUDED.rating;
+                DO UPDATE SET rating = EXCLUDED.rating,
+                              comment = EXCLUDED.comment;
             ";
 
-            var rows = await conn.ExecuteAsync(sql, new { MovieId = movieId, UserId = userId, Rating = rating });
+            var rows = await conn.ExecuteAsync(sql, new 
+            {
+                MovieId = rating.MovieId,
+                UserId = rating.UserId,
+                Rating = rating.Rating,
+                Comment = rating.Comment
+            });
             return rows > 0;
         }
 
@@ -395,7 +421,9 @@ namespace MoviesAPI.Repositories.Implementation
 
             foreach (var movie in movies)
             {
-                movie.Rating = await GetRatingOfAMovieAsync(movie.Id) ?? 0;
+                (decimal weightedRating, List<MovieRating> ratings) = await GetRatingsForMovieAsync(movie.Id);
+                movie.Rating = weightedRating;
+                movie.Ratings = ratings;
             }
 
             return movies;

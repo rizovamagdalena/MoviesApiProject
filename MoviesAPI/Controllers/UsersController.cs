@@ -54,9 +54,9 @@ namespace MoviesAPI.Controllers
 
         // PUT api/<UsersController>/5
         [HttpPut]
-        public async Task<ActionResult> Put(int id, [FromForm] UpdateUser user)
+        public async Task<ActionResult> Put([FromForm] UserProfile user)
         {
-            var existing = await _userRepository.GetUserAsync(id);
+            var existing = await _userRepository.GetUserByUsername(user.Username);
             if (existing == null)
             {
                 return NotFound();
@@ -67,7 +67,7 @@ namespace MoviesAPI.Controllers
                 return BadRequest();
             }
 
-            var result = await _userRepository.UpdateUserAsync(id, user);
+            var result = await _userRepository.UpdateUserAsync(user);
             return Ok(result);
         }
 

@@ -35,13 +35,10 @@ namespace MoviesAPI.Models.System
         public string Password { get; set; }
     }
 
-    public class UpdateUser
+    public class UserProfile
     {
-        public int Id { get; set; }
         public string Name { get; set; }
         public string Phone { get; set; }
         public string Username { get; set; }
-        public string Password { get; set; }
-        public bool Active { get; set; }
     }
 }

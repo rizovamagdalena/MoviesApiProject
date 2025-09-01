@@ -43,12 +43,12 @@ namespace MoviesAPI.Repositories.Implementation
             return user;
         }
 
-        public async Task<UpdateUser> GetUserForUpdateAsync(long id)
+        public async Task<UserProfile> GetUserForUpdateAsync(long id)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,active FROM users WHERE id = @id";
+            string sql = "SELECT name, phone, username FROM users WHERE id = @id";
 
-            var updateUser = await conn.QueryFirstOrDefaultAsync<UpdateUser>(sql, new { id });
+            var updateUser = await conn.QueryFirstOrDefaultAsync<UserProfile>(sql, new { id });
             return updateUser;
 
         }
@@ -64,26 +64,20 @@ namespace MoviesAPI.Repositories.Implementation
 
         }
 
-        public async Task<int> UpdateUserAsync(long id, UpdateUser updateUser)
+        public async Task<int> UpdateUserAsync( UserProfile updateUser)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
 
             string sql = @"UPDATE users
                    SET name = @Name,
-                       phone = @Phone,
-                       username = @Username,
-                       password = @Password,
-                       active = @Active
-                   WHERE id = @Id";
+                       phone = @Phone
+                   WHERE username = @Username";
 
             return await conn.ExecuteAsync(sql, new
             {
-                Id = id,
                 updateUser.Name,
                 updateUser.Phone,
-                updateUser.Username,
-                updateUser.Password,
-                updateUser.Active
+                updateUser.Username
             });
         }
 

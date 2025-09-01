@@ -14,7 +14,8 @@ namespace MoviesAPI.Models
         public string Actors { get; set; }
         public string Directors { get; set; }
         public string Genres { get; set; }
-        public double Rating { get; set; }
+        public List<MovieRating> Ratings { get; set; }
+        public decimal Rating { get; set; }
 
     }
 
@@ -48,15 +49,6 @@ namespace MoviesAPI.Models
         public string Name { get; set; }
         public string Genres { get; set; }
         public string Poster_Path { get; set; }
-    }
-
-    public class MovieRating
-    {
-        public long Id { get; set; }      
-        public long Movie_Id { get; set; }           
-        public long User_Id { get; set; }            
-        public int Rating { get; set; }
-
     }
 
 }

@@ -162,17 +162,24 @@ namespace MoviesAPI.Controllers
 
         // PUT: /api/movies/5/rating
         [HttpPut("{movieId}/rating")]
-        public async Task<ActionResult> UpdateRating(long movieId, [FromQuery] long userId, [FromQuery] int rating)
+        public async Task<ActionResult> UpdateRating(long movieId, [FromBody] CreateRating rating)
         {
-            if (rating < 1 || rating > 10)
+            if (rating.Rating < 1 || rating.Rating > 10)
                 return BadRequest("Rating must be between 1 and 10.");
 
-            var success = await _movieRepository.UpsertRating(movieId, userId, rating);
+            // ensure movieId from route matches body
+            rating.MovieId = movieId;
 
+            var success = await _movieRepository.UpsertRating(rating);
             if (!success)
                 return StatusCode(500, "Failed to save rating.");
 
-            return Ok(new { success=true,message= "Rating saved successfully." });
+            return Ok(new
+            {
+                success = true,
+                message = "Rating saved successfully.",
+                rating
+            });
         }
 
 
