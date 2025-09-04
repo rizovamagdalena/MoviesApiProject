@@ -1,6 +1,7 @@
 using MoviesAPI.Models.System;
 using MoviesAPI.Repositories.Implementation;
 using MoviesAPI.Repositories.Interface;
+using MoviesAPI.Service;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,12 @@ builder.Services.AddScoped<ITicketRepository, TicketRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IScreeningRepository, ScreeningRepository>();
 builder.Services.AddScoped<IHallRepository, HallRepository>();
+builder.Services.AddScoped<IChatBotRepository, ChatBotRepository>();
+
+builder.Services.AddScoped<IOpenAIService,OpenAIService>();
+builder.Services.AddHttpClient();
+
+
 
 
 
