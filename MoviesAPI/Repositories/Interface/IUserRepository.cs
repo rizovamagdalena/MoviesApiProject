@@ -14,6 +14,10 @@ namespace MoviesAPI.Repositories.Interface
         Task<int> DeleteUserAsync(long id);
         Task<User> GetUserByUsernameAndPassword(string username, string password);
         Task<bool> LogoutUser(string username);
+        Task<bool> IsEmailTakenAsync(string email);
+        Task<User> GetUserByEmailAsync(string email);
+        Task<bool> UpdateUserPasswordAsync(int userId, string newPassword);
+
     }
 
    

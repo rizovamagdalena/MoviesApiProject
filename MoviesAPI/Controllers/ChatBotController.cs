@@ -11,11 +11,14 @@ namespace MoviesAPI.Controllers
     {
         private readonly IChatBotRepository _chatbotRepository;
         private readonly IOpenAIService _openAIService;
+        private readonly IChatBotRagService _chatBotRagService;
 
-        public ChatBotController(IChatBotRepository chatbotRepository,IOpenAIService openAIService)
+
+        public ChatBotController(IChatBotRepository chatbotRepository,IOpenAIService openAIService,IChatBotRagService chatBotRagService)
         {
             _chatbotRepository = chatbotRepository;
             _openAIService = openAIService;
+            _chatBotRagService = chatBotRagService;
         }
 
         // GET: api/chatbot/faqs
@@ -73,7 +76,7 @@ namespace MoviesAPI.Controllers
             if (string.IsNullOrWhiteSpace(request.Question))
                 return BadRequest(new { answer = "Please ask a question." });
 
-            var answer = await _openAIService.AskQuestionAsync(request.Question);
+            var answer = await _chatBotRagService.AskQuestionAsync(request.Question);
             return Ok(new { answer });
         }
 

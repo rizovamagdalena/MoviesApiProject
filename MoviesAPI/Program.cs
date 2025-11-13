@@ -23,8 +23,14 @@ builder.Services.AddScoped<IScreeningRepository, ScreeningRepository>();
 builder.Services.AddScoped<IHallRepository, HallRepository>();
 builder.Services.AddScoped<IChatBotRepository, ChatBotRepository>();
 
+
 builder.Services.AddScoped<IOpenAIService,OpenAIService>();
+builder.Services.AddScoped<IChatBotRagService, ChatBotRagService>();
 builder.Services.AddHttpClient();
+
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+builder.Services.AddTransient<IEmailService, EmailService>();
+
 
 
 

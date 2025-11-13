@@ -127,6 +127,17 @@ namespace MoviesAPI.Repositories.Implementation
 
         }
 
+        public async Task<int> GetPurchasedTicketsAsync(long movieId, DateTime showTime)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            var sql = @"
+                SELECT COUNT(*) 
+                FROM ticket 
+                WHERE movie_id = @MovieId AND watch_movie = @ShowTime"; 
+            return await conn.ExecuteScalarAsync<int>(sql, new { MovieId = movieId, ShowTime = showTime });
+        }
+
+      
 
 
     }

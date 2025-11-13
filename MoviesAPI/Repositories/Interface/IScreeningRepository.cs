@@ -14,5 +14,6 @@ namespace MoviesAPI.Repositories.Interface
         Task <List<SeatForScreeningDto>> GetReservedSeatsAsync(long id);
         Task BookSeatsAsync(long screeningId, string username, List<int> hallSeatIds);
         Task<List<Screening>> GetScreeningsByHallAndDateAsync(int hallId,DateOnly date);
+        Task<List<Screening>> GetScreeningsByDateAsync(DateOnly date);
     }
 }

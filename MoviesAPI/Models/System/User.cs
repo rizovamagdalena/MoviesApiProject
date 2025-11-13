@@ -17,6 +17,10 @@ namespace MoviesAPI.Models.System
         [Required]
         [Display(Name = "First Name")]
         public string Name { get; set; }
+        [Required]
+        [Display(Name = "Email")]
+        public string Email { get; set; }
+        public bool EmailConfirmed { get; set; }
 
         [Required]
         [Display(Name = "Phone Number")]
@@ -32,6 +36,7 @@ namespace MoviesAPI.Models.System
         public string Name { get; set; }
         public string Phone { get; set; }
         public string Username { get; set; }
+        public string Email { get; set; }   
         public string Password { get; set; }
     }
 
@@ -39,6 +44,8 @@ namespace MoviesAPI.Models.System
     {
         public string Name { get; set; }
         public string Phone { get; set; }
+        public string Email { get; set; }
+
         public string Username { get; set; }
     }
 }

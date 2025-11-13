@@ -19,7 +19,7 @@ namespace MoviesAPI.Repositories.Implementation
         public async Task<IEnumerable<User>> GetUsersAsync()
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,active,role FROM users";
+            string sql = "SELECT id, name, phone, username, password,email,active,role FROM users";
 
             var result = await conn.QueryAsync<User>(sql);
             return result;
@@ -28,7 +28,7 @@ namespace MoviesAPI.Repositories.Implementation
         public async Task<User> GetUserAsync(long id)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,active,role FROM users WHERE id = @id";
+            string sql = "SELECT id, name, phone, username, password,email,active,role FROM users WHERE id = @id";
 
             var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { id });
             return user;
@@ -37,7 +37,7 @@ namespace MoviesAPI.Repositories.Implementation
         public async Task<User> GetUserByUsername(string username)
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,active,role FROM users WHERE username = @username";
+            string sql = "SELECT id, name, phone, username, password,email,active,role FROM users WHERE username = @username";
 
             var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { username });
             return user;
@@ -57,8 +57,11 @@ namespace MoviesAPI.Repositories.Implementation
         {
             using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
 
-            string sql = "INSERT into users(name, phone, username, password,active) VALUES(@Name, @Phone, @Username, @Password, @isActive) RETURNING id;";
-
+            string sql = @"
+                    INSERT INTO users(name, phone, username, password, email, active,emailconfirmed) 
+                    VALUES(@Name, @Phone, @Username, @Password, @Email, @IsActive, @EmailConfirmed) 
+                    RETURNING id;
+                ";
             var id = await conn.ExecuteScalarAsync<int>(sql, user);
             return id;
 
@@ -120,5 +123,39 @@ namespace MoviesAPI.Repositories.Implementation
 
             return rowsAffected > 0;
         }
+
+        public async Task<bool> IsEmailTakenAsync(string email)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            string sql = "SELECT COUNT(1) FROM users WHERE email = @Email;";
+            var count = await conn.ExecuteScalarAsync<int>(sql, new { Email = email });
+            return count > 0;
+        }
+
+        public async Task<User> GetUserByEmailAsync(string email)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+            string sql = @"SELECT id, name, phone, username, password, email, active AS ""IsActive"", role
+                   FROM users
+                   WHERE email = @Email";
+
+            var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { Email = email });
+            return user;
+        }
+
+        public async Task<bool> UpdateUserPasswordAsync(int userId, string newPassword)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+            string sql = @"UPDATE users
+                   SET password = @Password
+                   WHERE id = @UserId";
+
+            int rowsAffected = await conn.ExecuteAsync(sql, new { Password = newPassword, UserId = userId });
+            return rowsAffected > 0;
+        }
+
+
     }
 }

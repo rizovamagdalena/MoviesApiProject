@@ -261,9 +261,25 @@ namespace MoviesAPI.Repositories.Implementation
         }
 
 
+        public async Task<List<Screening>> GetScreeningsByDateAsync(DateOnly date)
+        {
+            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+
+            string sql = @"
+                SELECT *
+                FROM screening s
+                WHERE DATE(s.screening_date_time) = @screening_date;
+            ";
+
+            var screenings = await conn.QueryAsync<Screening>(
+                sql,
+                new { screening_date = date.ToDateTime(TimeOnly.MinValue) }
+            );
+
+            return screenings.ToList();
+        }
 
 
 
-      
     }
 }

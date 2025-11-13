@@ -13,4 +13,10 @@ namespace MoviesAPI.Models.System
         [DataType(DataType.Password)]
         public string Password { get; set; }
     }
+
+    public class ForgotPasswordRequest
+    {
+        public string Email { get; set; }
+    }
+
 }
