@@ -52,14 +52,14 @@ PopcornPassApiProject/
 ├── Controllers/        # API endpoints and request handling
 ├── Models/            # Data models and DTOs
 ├── Repositories/      # Data access layer (Dapper queries)
-├── Service/          # Business logic layer
+├── Service/          # Integrations with external APIs (OpenAI, SendinBlue email)
 ├── appsettings.json   # Configuration file
 └── Program.cs         # Application entry point
 ```
 
-**Architecture Pattern**: The project follows a clean architecture with separated concerns:
+**Architecture Pattern**: The project follows a layered architecture with separated concerns:
 - **Controllers**: Handle HTTP requests and responses
-- **Services**: Implement business logic
+- **Services**: Integrations with external APIs 
 - **Repositories**: Manage database operations using Dapper
 - **Models**: Define data structures
 
