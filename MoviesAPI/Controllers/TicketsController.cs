@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MoviesAPI.Models;
 using MoviesAPI.Repositories.Interface;
+using MoviesAPI.Service.Interface;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -10,83 +11,35 @@ namespace MoviesAPI.Controllers
     [ApiController]
     public class TicketsController : ControllerBase
     {
-        private readonly ITicketRepository _ticketRepository;
+        private readonly ITicketService _ticketService;
 
-        public TicketsController(ITicketRepository ticketRepository)
+        public TicketsController(ITicketService ticketService)
         {
-            _ticketRepository = ticketRepository;
+            _ticketService = ticketService;
         }
 
-
-        // GET: api/<TicketsController> or GET: api/tickets
+        // GET api/tickets
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TicketResponse>>> Get()
-        {
-            var tickets = await _ticketRepository.GetTicketsAsync();
-            System.Diagnostics.Debug.WriteLine("tickets" + tickets);
-            foreach (var ticket in tickets)
-            {
+        public async Task<ActionResult<IEnumerable<TicketResponse>>> GetAll()
+            => Ok(await _ticketService.GetAllAsync());
 
-                System.Diagnostics.Debug.WriteLine("row" + ticket.Row);
-            }
-
-            return Ok(tickets);
-        }
-
-        // GET api/<TicketsController>/5
+        // GET api/tickets/2
         [HttpGet("{id}")]
-        public async Task<ActionResult<Ticket>> Get(long id)
+        public async Task<ActionResult<TicketResponse>> GetById(long id)
         {
-            var ticket = await _ticketRepository.GetTicketAsync(id);
-
-            if (ticket == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(ticket);
+            var ticket = await _ticketService.GetByIdAsync(id);
+            return ticket is null ? NotFound() : Ok(ticket);
         }
 
-        // POST api/<TicketsController>
-        [HttpPost]
-        public async Task<ActionResult> Post([FromBody] CreateTicket ticket)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            var id = await _ticketRepository.CreateTicketAsync(ticket);
-            return Ok(id);
-        }
-
-        //// PUT api/<TicketsController>/5
-        //[HttpPut]
-        //public async Task<ActionResult> Put(int id, [FromForm] UpdateTicket ticket)
-        //{
-        //    var existing = await _ticketRepository.GetTicketForUpdateAsync(id);
-        //    if (existing == null)
-        //    {
-        //        return NotFound();
-        //    }
-
-        //    if (!ModelState.IsValid)
-        //    {
-        //        return BadRequest();
-        //    }
-
-        //    var result = await _ticketRepository.UpdateTicketAsync(id, ticket);
-        //    return Ok(result);
-        //}
-
-        // DELETE api/<TicketsController>/5
+        // DELETE api/tickets/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(long id)
         {
-            var existing = await _ticketRepository.GetTicketAsync(id);
-            if (existing == null)
-                return NotFound();
+            var existing = await _ticketService.GetByIdAsync(id);
+            if (existing is null) return NotFound();
 
-            var result = await _ticketRepository.DeleteTicketAsync(id);
-            return Ok(result);
+            await _ticketService.DeleteAsync(id);
+            return NoContent();
         }
     }
 }

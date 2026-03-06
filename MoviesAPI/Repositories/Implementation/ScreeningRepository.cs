@@ -10,16 +10,17 @@ namespace MoviesAPI.Repositories.Implementation
 {
     public class ScreeningRepository : IScreeningRepository
     {
-        private readonly DBSettings _dbSettings;
+        private readonly IDbConnectionFactory _connectionFactory;
 
-        public ScreeningRepository(IOptions<DBSettings> dbSettings)
+        public ScreeningRepository(IDbConnectionFactory connection)
         {
-            _dbSettings = dbSettings.Value;
+            _connectionFactory = connection;
         }
 
-        public async Task<IEnumerable<ScreeningResponse>> GetScreeningsAsync()
+
+        public async Task<IEnumerable<ScreeningResponse>> GetAllAsync()
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
             string sql = @"SELECT 
                         s.id,
                         s.movie_id, 
@@ -36,9 +37,9 @@ namespace MoviesAPI.Repositories.Implementation
             return result;
         }
 
-        public async Task<ScreeningResponse> GetScreeningAsync(long id)
+        public async Task<ScreeningResponse> GetByIdAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
             string sql = @"
                 SELECT 
                     s.id,
@@ -68,9 +69,9 @@ namespace MoviesAPI.Repositories.Implementation
             return screening.FirstOrDefault();
         }
 
-        public async Task<Screening> GetScreeningForUpdateAsync(long id)
+        public async Task<Screening> GetForUpdateAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
             string sql = "SELECT id, movie_id, screening_date_time, total_tickets, available_tickets FROM screening WHERE id = @id";
 
             var updateScreening = await conn.QueryFirstOrDefaultAsync<Screening>(sql, new { id });
@@ -78,25 +79,27 @@ namespace MoviesAPI.Repositories.Implementation
 
         }
 
-        public async Task<int> CreateScreeningAsync(CreateScreening screening)
+        public async Task<int> CreateAsync(CreateScreening screening)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
 
-            var numRowAndSeatSql = "SELECT rows,seats_per_row FROM hall WHERE id = @HallId;";
-            var numRowAndSeat = await conn.QueryFirstOrDefaultAsync<(int rows, int seats_per_row)>(numRowAndSeatSql, new { HallId = screening.Hall_Id });
+            var hallSql = "SELECT rows, seats_per_row FROM hall WHERE id = @HallId;";
+            var hall = await conn.QueryFirstOrDefaultAsync<(int rows, int seats_per_row)>(
+                hallSql, new { HallId = screening.Hall_Id });
+            if (hall == default)
+                throw new Exception($"Hall with ID {screening.Hall_Id} not found.");
 
-            int totalSeats = numRowAndSeat.rows * numRowAndSeat.seats_per_row;
+            int totalSeats = hall.rows * hall.seats_per_row;
 
             var ticketPrice = await conn.ExecuteScalarAsync<decimal>(
-                "SELECT amount FROM movie WHERE id = @Id", new { Id = screening.Movie_Id });
+                "SELECT amount FROM movie WHERE id = @Id;", new { Id = screening.Movie_Id });
 
             string sql = @"
                 INSERT INTO screening(movie_id, screening_date_time, total_tickets, available_tickets, hall_id, ticket_price)
                 VALUES (@Movie_Id, @Screening_Date_Time, @TotalTickets, @AvailableTickets, @Hall_Id, @Ticket_Price)
-                RETURNING id;
-             ";
+                RETURNING id;";
 
-            var id = await conn.ExecuteScalarAsync<int>(sql, new
+            return await conn.ExecuteScalarAsync<int>(sql, new
             {
                 screening.Movie_Id,
                 screening.Screening_Date_Time,
@@ -105,15 +108,11 @@ namespace MoviesAPI.Repositories.Implementation
                 screening.Hall_Id,
                 Ticket_Price = ticketPrice
             });
-
-            return id;
-
-
         }
 
-        public async Task<int> UpdateScreeningAsync(long id, UpdateScreening screening)
+        public async Task<int> UpdateAsync(long id, UpdateScreening screening)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
 
             string sql = @"UPDATE screening
                    SET movie_id = @Movie_Id,
@@ -132,11 +131,11 @@ namespace MoviesAPI.Repositories.Implementation
             });
         }
 
-        public async Task<int> DeleteScreeningAsync(long id)
+        public async Task<int> DeleteAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
 
-            string sql = "delete from screening where id = @id";
+            string sql = "DELETE FROM screening WHERE id = @id";
 
             return await conn.ExecuteAsync(sql, new { id });
 
@@ -144,7 +143,7 @@ namespace MoviesAPI.Repositories.Implementation
 
         public async Task<List<SeatForScreeningDto>> GetReservedSeatsAsync(long screeningId)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
 
             string sql = @"
                 SELECT sfs.id AS Id, sfs.screening_id AS ScreeningId, 
@@ -159,127 +158,63 @@ namespace MoviesAPI.Repositories.Implementation
             return seats.ToList();
         }
 
-
-        public async Task BookSeatsAsync(long screeningId, string username, List<int> hallSeatIds)
+        public async Task<List<int>> GetTakenSeatIdsAsync(long screeningId, List<int> hallSeatIds,
+            NpgsqlConnection conn, NpgsqlTransaction transaction)
         {
+            string sql = @"
+                SELECT hall_seat_id FROM seat_for_screening
+                WHERE screening_id = @ScreeningId AND hall_seat_id = ANY(@SeatIds);";
 
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            await conn.OpenAsync();
+            return (await conn.QueryAsync<int>(sql,
+                new { ScreeningId = screeningId, SeatIds = hallSeatIds },
+                transaction)).ToList();
+        }
 
-            using var transaction = await conn.BeginTransactionAsync();
-
-            try
-            {
-                string userIdSql = @"SELECT id FROM users WHERE username = @Username";
-                var userId = await conn.ExecuteScalarAsync<long?>(userIdSql, new { Username = username }, transaction);
-
-                if (userId == null)
-                    throw new Exception($"User '{username}' not found.");
-
-                long actualUserId = userId.Value;
-
-                string conflictSql = @"
-                    SELECT hall_seat_id 
-                    FROM seat_for_screening 
-                    WHERE screening_id = @ScreeningId 
-                      AND hall_seat_id = ANY(@SeatIds)";
-
-                var takenSeats = (await conn.QueryAsync<int>(
-                    conflictSql,
-                    new { ScreeningId = screeningId, SeatIds = hallSeatIds },
-                    transaction)).ToList();
-
-                if (takenSeats.Any())
-                    throw new Exception($"Seats already booked: {string.Join(", ", takenSeats)}");
-
-                ScreeningResponse screening = await GetScreeningAsync(screeningId);
-                decimal ticketAmount = screening.Movie.Amount;
-
-                foreach (var seatId in hallSeatIds)
-                {
-                    string ticketSql = @"
-                    INSERT INTO ticket(movie_id, user_id, watch_movie, price, hall_seat_id)
-                    VALUES(@MovieId, @UserId, @WatchMovie, @Price, @HallSeatId)
-                    RETURNING id;";
-
-                    int ticketId = await conn.ExecuteScalarAsync<int>(
-                        ticketSql,
-                        new
-                        {
-                            MovieId = screening.Movie_Id,
-                            UserId = actualUserId,
-                            WatchMovie = screening.Screening_Date_Time,
-                            Price = ticketAmount,
-                            HallSeatId = seatId
-                        },
-                        transaction);
-
-                    string insertSeatSql = @"
+        public async Task InsertSeatForScreeningAsync(long screeningId, int hallSeatId,
+            long userId, int ticketId, NpgsqlConnection conn, NpgsqlTransaction transaction)
+        {
+            string sql = @"
                 INSERT INTO seat_for_screening(screening_id, hall_seat_id, user_id, ticket_id)
                 VALUES(@ScreeningId, @HallSeatId, @UserId, @TicketId);";
 
-                    await conn.ExecuteAsync(insertSeatSql,
-                        new { ScreeningId = screeningId, HallSeatId = seatId, UserId = actualUserId, TicketId = ticketId },
-                        transaction);
-                }
-
-                string updateSql = @"
-            UPDATE screening 
-            SET available_tickets = available_tickets - @Count 
-            WHERE id = @ScreeningId";
-
-                await conn.ExecuteAsync(updateSql,
-                    new { Count = hallSeatIds.Count, ScreeningId = screeningId },
-                    transaction);
-
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            await conn.ExecuteAsync(sql,
+                new { ScreeningId = screeningId, HallSeatId = hallSeatId, UserId = userId, TicketId = ticketId },
+                transaction);
         }
 
-        public async Task<List<Screening>> GetScreeningsByHallAndDateAsync(int hall_id,DateOnly date)
+        public async Task DecrementAvailableTicketsAsync(long screeningId, int count,
+            NpgsqlConnection conn, NpgsqlTransaction transaction)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
             string sql = @"
-                SELECT *
-                FROM screening s
-                WHERE s.hall_id = @hall_id
-                  AND DATE(s.screening_date_time) = @screening_date;
-            ";
+                UPDATE screening 
+                SET available_tickets = available_tickets - @Count 
+                WHERE id = @ScreeningId;";
 
-            var screenings = await conn.QueryAsync<Screening>(
-                sql,
-                new { hall_id, screening_date = date.ToDateTime(TimeOnly.MinValue) }
-            );
-
-            return screenings.ToList();
+            await conn.ExecuteAsync(sql,
+                new { Count = count, ScreeningId = screeningId },
+                transaction);
         }
 
-
-        public async Task<List<Screening>> GetScreeningsByDateAsync(DateOnly date)
+        public async Task<List<Screening>> GetByHallAndDateAsync(int hallId, DateOnly date)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
+            using var conn = _connectionFactory.CreateConnection();
             string sql = @"
-                SELECT *
-                FROM screening s
-                WHERE DATE(s.screening_date_time) = @screening_date;
-            ";
+                SELECT * FROM screening
+                WHERE hall_id = @HallId AND DATE(screening_date_time) = @Date;";
 
-            var screenings = await conn.QueryAsync<Screening>(
-                sql,
-                new { screening_date = date.ToDateTime(TimeOnly.MinValue) }
-            );
-
-            return screenings.ToList();
+            return (await conn.QueryAsync<Screening>(sql,
+                new { HallId = hallId, Date = date.ToDateTime(TimeOnly.MinValue) })).ToList();
         }
 
+        public async Task<List<Screening>> GetByDateAsync(DateOnly date)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            string sql = @"
+                SELECT * FROM screening
+                WHERE DATE(screening_date_time) = @Date;";
 
-
+            return (await conn.QueryAsync<Screening>(sql,
+                new { Date = date.ToDateTime(TimeOnly.MinValue) })).ToList();
+        }
     }
 }

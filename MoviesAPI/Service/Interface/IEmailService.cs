@@ -1,6 +1,6 @@
 ﻿using MoviesAPI.Models.System;
 
-namespace MoviesAPI.Service
+namespace MoviesAPI.Service.Interface
 {
     public interface IEmailService
     {

@@ -2,6 +2,7 @@
 using MoviesAPI.Models.System;
 using MoviesAPI.Repositories.Implementation;
 using MoviesAPI.Repositories.Interface;
+using MoviesAPI.Service.Interface;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -11,76 +12,53 @@ namespace MoviesAPI.Controllers
     [ApiController]
     public class UsersController : ControllerBase
     {
-        private readonly IUserRepository _userRepository;
+        private readonly IUserService _userService;
 
-        public UsersController(IUserRepository userRepository)
+        public UsersController(IUserService userService)
         {
-            _userRepository = userRepository;
+            _userService = userService;
         }
 
-
-        // GET: api/<UsersController> or GET: api/movies
+        // GET: api/users
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<User>>> Get()
-        {
-            var users = await _userRepository.GetUsersAsync();
-            return Ok(users);
-        }
+        public async Task<ActionResult<IEnumerable<User>>> GetAll()
+            => Ok(await _userService.GetAllAsync());
 
-        // GET api/<UsersController>/5
+        // GET: api/users/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<User>> Get(long id)
+        public async Task<ActionResult<User>> GetById(long id)
         {
-            var user = await _userRepository.GetUserAsync(id);
-
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(user);
+            var user = await _userService.GetByIdAsync(id);
+            return user is null ? NotFound() : Ok(user);
         }
 
-        // POST api/<UsersController>
-        [HttpPost]
-        public async Task<ActionResult> Post([FromForm] RegisterRequest user)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
 
-            var id = await _userRepository.CreateUserAsync(user);
-            return Ok(id);
-        }
-
-        // PUT api/<UsersController>/5
+        // PUT: api/users
         [HttpPut]
-        public async Task<ActionResult> Put([FromForm] UserProfile user)
+        public async Task<ActionResult> Update([FromForm] UserProfile user)
         {
-            var existing = await _userRepository.GetUserByUsername(user.Username);
-            if (existing == null)
-            {
-                return NotFound();
-            }
+            if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            if (!ModelState.IsValid)
+            try
             {
-                return BadRequest();
+                var result = await _userService.UpdateAsync(user);
+                return Ok(result);
             }
-
-            var result = await _userRepository.UpdateUserAsync(user);
-            return Ok(result);
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
         }
 
-        // DELETE api/<UsersController>/5
+        // DELETE: api/users/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(long id) 
         {
-            var existing = await _userRepository.GetUserAsync(id);
-            if (existing == null)
-                return NotFound();
+            var existing = await _userService.GetByIdAsync(id);
+            if (existing is null) return NotFound();
 
-            var result = await _userRepository.DeleteUserAsync(id);
-            return Ok(result);
+            await _userService.DeleteAsync(id);
+            return NoContent();
         }
     }
 }

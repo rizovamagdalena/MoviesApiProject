@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MoviesAPI.Models;
 using MoviesAPI.Models.System;
 using MoviesAPI.Repositories.Interface;
+using MoviesAPI.Service.Interface;
 
 namespace MoviesAPI.Controllers
 {
@@ -10,112 +11,84 @@ namespace MoviesAPI.Controllers
     [ApiController]
     public class ScreeningsController : ControllerBase
     {
-        private readonly IScreeningRepository _screeningRepository;
+        private readonly IScreeningService _screeningService;
 
-        public ScreeningsController(IScreeningRepository screeningRepository)
+        public ScreeningsController(IScreeningService screeningService)
         {
-            _screeningRepository = screeningRepository;
+            _screeningService = screeningService;
         }
 
-
-        // GET: api/<ScreeningsController> or GET: api/screenings
+        // GET api/screenings
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ScreeningResponse>>> Get()
-        {
-            var screenings = await _screeningRepository.GetScreeningsAsync();
-            return Ok(screenings);
-        }
+        public async Task<ActionResult<IEnumerable<ScreeningResponse>>> GetAll()
+             => Ok(await _screeningService.GetAllAsync());
 
-        // GET api/<ScreeningsController>/5
+        // GET api/screenings/2
         [HttpGet("{id}")]
-        public async Task<ActionResult<ScreeningResponse>> Get(long id)
+        public async Task<ActionResult<ScreeningResponse>> GetById(long id)
         {
-            var screening = await _screeningRepository.GetScreeningAsync(id);
-
-            if (screening == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(screening);
+            var screening = await _screeningService.GetByIdAsync(id);
+            return screening is null ? NotFound() : Ok(screening);
         }
 
-        // POST api/<ScreeningsController>
+        // POST api/screenings
         [HttpPost]
-        public async Task<ActionResult> Post([FromBody] CreateScreening screening)
+        public async Task<ActionResult> Create([FromBody] CreateScreening screening)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-
-
-            var id = await _screeningRepository.CreateScreeningAsync(screening);
-            return Ok(id);
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var id = await _screeningService.CreateAsync(screening);
+            return CreatedAtAction(nameof(GetById), new { id }, id);
         }
 
-        // PUT api/<ScreeningsController>/5
+        // PUT api/screenings/2
         [HttpPut("{id}")]
-        public async Task<ActionResult> Put(int id, [FromBody] UpdateScreening screening)
+        public async Task<ActionResult> Update(long id, [FromBody] UpdateScreening screening)
         {
-            var existing = await _screeningRepository.GetScreeningForUpdateAsync(id);
-            if (existing == null)
-            {
-                return NotFound();
-            }
+            if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            if (!ModelState.IsValid)
-            {
-                return BadRequest();
-            }
+            var existing = await _screeningService.GetByIdAsync(id);
+            if (existing is null) return NotFound();
 
-            if (screening.Available_Tickets > screening.Total_Tickets)
+            try
             {
-                return BadRequest("Available tickets cannot be greater than total tickets.");
+                var result = await _screeningService.UpdateAsync(id, screening);
+                return Ok(result);
             }
-
-            var result = await _screeningRepository.UpdateScreeningAsync(id, screening);
-            return Ok(result);
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
 
-        // DELETE api/<ScreeningsController>/5
+        // DELETE api/screenings/2
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(long id)
         {
-            var existing = await _screeningRepository.GetScreeningAsync(id);
-            if (existing == null)
-                return NotFound();
+            var existing = await _screeningService.GetByIdAsync(id);
+            if (existing is null) return NotFound();
 
-            var result = await _screeningRepository.DeleteScreeningAsync(id);
-            return Ok(result);
+            await _screeningService.DeleteAsync(id);
+            return NoContent();
         }
 
-        // GET: api/screenings/1/reservedseats
+        // GET api/screenings/2/reservedseats
         [HttpGet("{id}/reservedseats")]
-        public async Task<IActionResult> GetReservedSeatsForScreening(int id)
+        public async Task<ActionResult<List<SeatForScreeningDto>>> GetReservedSeats(long id)
         {
-            var reservedSeats = await _screeningRepository.GetReservedSeatsAsync(id);
-
-            if (reservedSeats == null || !reservedSeats.Any())
-                reservedSeats = new List<SeatForScreeningDto>();
-
-            return Ok(reservedSeats);
+            var seats = await _screeningService.GetReservedSeatsAsync(id);
+            return Ok(seats);
         }
 
-        // POST: api/screenings/5/book
+        // POST api/screenings/2/book
         [HttpPost("{id}/book")]
-        public async Task<IActionResult> BookSeats(int id, [FromBody] BookSeatsRequest request)
+        public async Task<IActionResult> BookSeats(long id, [FromBody] BookSeatsRequest request)
         {
             if (request.SelectedSeatsId == null || !request.SelectedSeatsId.Any())
                 return BadRequest("No seats selected.");
 
-            var screening = await _screeningRepository.GetScreeningAsync(id);
-
-            if (screening == null)
-                return NotFound("Screening not found.");
-
             try
             {
-                await _screeningRepository.BookSeatsAsync(id, request.username, request.SelectedSeatsId);
+                await _screeningService.BookSeatsAsync(id, request.username, request.SelectedSeatsId);
                 return Ok(new { Message = "Seats successfully booked!" });
             }
             catch (Exception ex)

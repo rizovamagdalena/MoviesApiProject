@@ -5,18 +5,19 @@ namespace MoviesAPI.Repositories.Interface
 {
     public interface IUserRepository
     {
-        Task<IEnumerable<User>> GetUsersAsync();
-        Task<User> GetUserAsync(long id);
-        Task<User> GetUserByUsername(string username);
-        Task<int> CreateUserAsync(RegisterRequest user); 
-        Task<int> UpdateUserAsync(UserProfile user);
-        Task<UserProfile> GetUserForUpdateAsync(long id);
-        Task<int> DeleteUserAsync(long id);
-        Task<User> GetUserByUsernameAndPassword(string username, string password);
-        Task<bool> LogoutUser(string username);
+        Task<IEnumerable<User>> GetAllAsync();
+        Task<User?> GetByIdAsync(long id);
+        Task<User?> GetByUsernameAsync(string username);
+        Task<User?> GetByEmailAsync(string email);
+        Task<UserProfile?> GetForUpdateAsync(long id);
+        Task<long?> GetUserIdByUsernameAsync(string username);
         Task<bool> IsEmailTakenAsync(string email);
-        Task<User> GetUserByEmailAsync(string email);
-        Task<bool> UpdateUserPasswordAsync(int userId, string newPassword);
+        Task<User?> GetByUsernameAndPasswordAsync(string username, string password);
+        Task<bool> LogoutAsync(string username);
+        Task<int> CreateAsync(RegisterRequest user);
+        Task<int> UpdateAsync(UserProfile updateUser);
+        Task<int> DeleteAsync(long id);
+        Task<bool> UpdatePasswordAsync(int userId, string newPassword);
 
     }
 

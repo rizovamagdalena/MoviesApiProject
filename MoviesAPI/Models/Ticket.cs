@@ -39,11 +39,5 @@
 
     }
 
-    //public class UpdateTicket
-    //{
-    //    public DateTime Watch_Movie { get; set; }
-    //    public decimal Price { get; set; }
-    //}
-
     
 }

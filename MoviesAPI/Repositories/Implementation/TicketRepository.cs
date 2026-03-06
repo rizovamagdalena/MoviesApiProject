@@ -10,134 +10,71 @@ namespace MoviesAPI.Repositories.Implementation
 {
     public class TicketRepository : ITicketRepository
     {
-        private readonly DBSettings _dbSettings;
+        private readonly IDbConnectionFactory _connectionFactory;
 
-        public TicketRepository(IOptions<DBSettings> dbSettings)
+        public TicketRepository(IDbConnectionFactory connection)
         {
-            _dbSettings = dbSettings.Value;
+            _connectionFactory = connection;
         }
 
-        public async Task<IEnumerable<TicketResponse>> GetTicketsAsync()
+        public async Task<IEnumerable<TicketResponse>> GetAllAsync()
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-          
+            using var conn = _connectionFactory.CreateConnection();
+            string sql = @"
+                SELECT t.id, m.name AS moviename, m.poster_path AS posterpath,
+                       u.username AS username, t.watch_movie, t.price,
+                       h.id AS hallname, s.row_number AS row, s.seat_number AS column
+                FROM ticket t
+                INNER JOIN movie m ON t.movie_id = m.id
+                INNER JOIN users u ON t.user_id = u.id
+                INNER JOIN hall_seat s ON t.hall_seat_id = s.id
+                INNER JOIN hall h ON s.hall_id = h.id;";
 
-            string sql = @"SELECT 
-                        t.id, 
-                        m.name AS moviename,
-                        m.poster_path AS posterpath,
-                        u.username AS username, 
-                        t.watch_movie, 
-                        t.price,
-                        H.id AS hallname,
-                        s.row_number AS row,
-                        s.seat_number AS column
-                    FROM ticket t
-                    INNER JOIN movie m ON t.movie_id = m.id
-                    INNER JOIN users u ON t.user_id = u.id
-                    INNER JOIN hall_seat s ON t.hall_seat_id = s.id
-                    INNER JOIN hall h ON s.hall_id = h.id;";
+            return await conn.QueryAsync<TicketResponse>(sql);
+        }
 
-            System.Diagnostics.Debug.WriteLine(sql);
+        public async Task<TicketResponse?> GetByIdAsync(long id)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            string sql = @"
+                SELECT t.id, m.name AS moviename, m.poster_path AS posterpath,
+                       u.username AS username, t.watch_movie, t.price,
+                       h.id AS hallname, s.row_number AS row, s.seat_number AS column
+                FROM ticket t
+                INNER JOIN movie m ON t.movie_id = m.id
+                INNER JOIN users u ON t.user_id = u.id
+                INNER JOIN hall_seat s ON t.hall_seat_id = s.id
+                INNER JOIN hall h ON s.hall_id = h.id
+                WHERE t.id = @Id;";
 
-            var result = await conn.QueryAsync<TicketResponse>(sql);
-            System.Diagnostics.Debug.WriteLine("result" + result);
+            return await conn.QueryFirstOrDefaultAsync<TicketResponse>(sql, new { Id = id });
+        }
 
+        public async Task<int> CreateAsync(long movieId, long userId, DateTime watchMovie,
+            decimal price, int hallSeatId, NpgsqlConnection conn, NpgsqlTransaction transaction)
+        {
+            string sql = @"
+                INSERT INTO ticket(movie_id, user_id, watch_movie, price, hall_seat_id)
+                VALUES(@MovieId, @UserId, @WatchMovie, @Price, @HallSeatId)
+                RETURNING id;";
 
-            foreach (var ticket in result)
+            return await conn.ExecuteScalarAsync<int>(sql, new
             {
-
-                System.Diagnostics.Debug.WriteLine("ticket" + ticket);
-            }
-
-            return result;
+                MovieId = movieId,
+                UserId = userId,
+                WatchMovie = watchMovie,
+                Price = price,
+                HallSeatId = hallSeatId
+            }, transaction);
         }
 
-        public async Task<TicketResponse> GetTicketAsync(long id)
+        public async Task<int> DeleteAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = @"SELECT 
-                        t.id, 
-                        m.name AS moviename,
-                        m.poster_path AS posterpath,
-                        u.username AS username, 
-                        t.watch_movie, 
-                        t.price,
-                        H.id AS hallname,
-                        s.row_number AS row,
-                        s.seat_number AS column
-                    FROM ticket t
-                    INNER JOIN movie m ON t.movie_id = m.id
-                    INNER JOIN users u ON t.user_id = u.id
-                    INNER JOIN hall_seat s ON t.hall_seat_id = s.id
-                    INNER JOIN hall h ON s.hall_id = h.id
-                    WHERE t.id = @id;";
-
-            var ticket = await conn.QueryFirstOrDefaultAsync<TicketResponse>(sql, new { id });
-            return ticket;
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.ExecuteAsync("DELETE FROM ticket WHERE id = @Id;", new { Id = id });
         }
 
-        //public async Task<UpdateTicket> GetTicketForUpdateAsync(long id)
-        //{
-        //    using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-        //    string sql = "SELECT watch_movie, amount FROM ticket WHERE id = @id";
 
-        //    var updateTicket = await conn.QueryFirstOrDefaultAsync<UpdateTicket>(sql, new { id });
-        //    return updateTicket;
-
-        //}
-
-        public async Task<int> CreateTicketAsync(CreateTicket ticket)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = @"INSERT INTO ticket(movie_id, user_id, watch_movie, price)
-                   VALUES(@Movie_Id, @User_Id, @Watch_Movie, @Price)
-                   RETURNING id;";
-
-            var id = await conn.ExecuteScalarAsync<int>(sql, ticket);
-
-            return id;
-        }
-
-        //public async Task<int> UpdateTicketAsync(long id, UpdateTicket updateTicket)
-        //{
-        //    using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-        //    string sql = @"UPDATE ticket
-        //           SET watch_movie = @Watch_Movie,
-        //               price = @Price
-        //           WHERE id = @Id";
-
-        //    return await conn.ExecuteAsync(sql, new
-        //    {
-        //        Id = id,
-        //        updateTicket.Watch_Movie,
-        //        updateTicket.Price
-        //    });
-        //}
-
-        public async Task<int> DeleteTicketAsync(long id)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = "DELETE FROM ticket WHERE id = @id";
-
-            return await conn.ExecuteAsync(sql, new { id });
-
-        }
-
-        public async Task<int> GetPurchasedTicketsAsync(long movieId, DateTime showTime)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            var sql = @"
-                SELECT COUNT(*) 
-                FROM ticket 
-                WHERE movie_id = @MovieId AND watch_movie = @ShowTime"; 
-            return await conn.ExecuteScalarAsync<int>(sql, new { MovieId = movieId, ShowTime = showTime });
-        }
-
-      
 
 
     }

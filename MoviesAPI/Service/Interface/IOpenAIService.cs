@@ -1,4 +1,4 @@
-﻿namespace MoviesAPI.Service
+﻿namespace MoviesAPI.Service.Interface
 {
     public interface IOpenAIService
     {

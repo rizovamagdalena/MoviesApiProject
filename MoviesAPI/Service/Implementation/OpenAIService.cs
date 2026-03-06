@@ -1,8 +1,9 @@
-﻿using System.Net.Http.Headers;
+﻿using MoviesAPI.Service.Interface;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 
-namespace MoviesAPI.Service
+namespace MoviesAPI.Service.Implementation
 {
     public class OpenAIService : IOpenAIService
     {

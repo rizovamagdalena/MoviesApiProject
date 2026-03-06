@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using MoviesAPI.Models.System;
 using MoviesAPI.Repositories.Interface;
-using MoviesAPI.Service;
+using MoviesAPI.Service.Interface;
 using System.Reflection;
 using System.Text;
 
@@ -13,12 +13,13 @@ namespace MoviesAPI.Controllers
     [ApiController]
     public class AccountController : ControllerBase
     {
-        private readonly IUserRepository _userRepository;
+
+        private readonly IUserService _userService;
         private readonly IEmailService _emailService;
 
-        public AccountController(IUserRepository userRepository,IEmailService emailService)
+        public AccountController(IUserService userService, IEmailService emailService)
         {
-            _userRepository = userRepository;
+            _userService = userService;
             _emailService = emailService;
         }
 
@@ -28,12 +29,10 @@ namespace MoviesAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest("Invalid request");
 
-            var user = await _userRepository.GetUserByUsernameAndPassword(request.Username, request.Password);
+            var user = await _userService.LoginAsync(request.Username, request.Password);
 
             if (user == null)
                 return Unauthorized("Invalid username or password");
-
-
 
 
             // Add laterr: For now, just returning a simple token (can be replaced with JWT)
@@ -61,7 +60,7 @@ namespace MoviesAPI.Controllers
             if (string.IsNullOrWhiteSpace(username))
                 return BadRequest("Username is required");
 
-            var success = await _userRepository.LogoutUser(username);
+            var success = await _userService.LogoutAsync(username);
 
             if (!success)
                 return NotFound("User not found or already logged out");
@@ -73,15 +72,15 @@ namespace MoviesAPI.Controllers
         [HttpPost("Register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            if (!ModelState.IsValid)
-                return BadRequest("Invalid request");
+            if (!ModelState.IsValid) return BadRequest("Invalid request");
 
-            if (await _userRepository.IsEmailTakenAsync(request.Email))
+            if (await _userService.IsEmailTakenAsync(request.Email))
                 return Conflict(new { message = "Email already registered." });
 
-            var existingUser = await _userRepository.GetUserByUsername(request.Username);
+            var existingUser = await _userService.GetByUsernameAsync(request.Username);
             if (existingUser != null)
-                return Conflict("Username already exists");
+                return Conflict(new { message = "Username already exists." });
+
 
             var token = Guid.NewGuid().ToString();
 
@@ -89,44 +88,17 @@ namespace MoviesAPI.Controllers
 
             TempRegistrationStore.Add(token, request);
 
-            var emailMessage = new EmailMessage
+            await _emailService.SendEmailAsync(new EmailMessage
             {
                 MailTo = request.Email,
-                Subject = "Confirm your email"
-            };
-            var sb = new StringBuilder();
-            sb.AppendLine("<html>");
-            sb.AppendLine("<body>");
-            sb.AppendLine($"<p>Hi <strong>{request.Name}</strong>,</p>");
-            sb.AppendLine("<p>Thank you for registering at <strong>Movie App</strong>!</p>");
-            sb.AppendLine("<p>Please confirm your email by clicking the link below:</p>");
-            sb.AppendLine($"<p><a href='{confirmationLink}' style='background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;'>Confirm your email</a></p>");
-            sb.AppendLine("<p>If you did not register, please ignore this email.</p>");
-            sb.AppendLine("</body>");
-            sb.AppendLine("</html>");
-            emailMessage.Content = sb.ToString();
-
-            await _emailService.SendEmailAsync(emailMessage);
+                Subject = "Confirm your email",
+                Content = BuildConfirmationEmail(request.Name, confirmationLink)
+            });
 
             return Ok(new { message = "Confirmation email sent. Please check your email to complete registration." });
         }
 
-        public static class TempRegistrationStore
-        {
-            public static Dictionary<string, RegisterRequest> PendingRegistrations = new();
 
-            public static void Add(string token, RegisterRequest request) => PendingRegistrations[token] = request;
-
-            public static RegisterRequest? Get(string token)
-            {
-                if (PendingRegistrations.TryGetValue(token, out var request))
-                {
-                    PendingRegistrations.Remove(token); // remove after retrieval
-                    return request;
-                }
-                return null;
-            }
-        }
 
         [HttpGet("ConfirmEmail")]
         public async Task<IActionResult> ConfirmEmail([FromQuery] string token)
@@ -135,16 +107,8 @@ namespace MoviesAPI.Controllers
             if (pendingRequest == null)
                 return BadRequest("Invalid or expired token");
 
-            var user = new User
-            {
-                Username = pendingRequest.Username,
-                Email = pendingRequest.Email,
-                Password = pendingRequest.Password,
-                IsActive = true
-            };
-
             pendingRequest.isActive = true;
-            var userId = await _userRepository.CreateUserAsync(pendingRequest);
+            await _userService.CreateAsync(pendingRequest);
 
             return Ok("Email confirmed and user account created! You can now log in.");
         }
@@ -155,7 +119,7 @@ namespace MoviesAPI.Controllers
             if (string.IsNullOrWhiteSpace(request.Email))
                 return BadRequest("Email is required.");
 
-            var user = await _userRepository.GetUserByEmailAsync(request.Email);
+            var user = await _userService.GetByEmailAsync(request.Email);
             if (user == null)
             {
                 // Always return success message to avoid exposing valid emails
@@ -173,40 +137,83 @@ namespace MoviesAPI.Controllers
 
 
             // Build email content
-            var emailMessage = new EmailMessage
+            await _emailService.SendEmailAsync(new EmailMessage
             {
                 MailTo = request.Email,
                 Subject = "Reset Your Password",
-                Content = $@"
-            <html>
-            <body>
-            <p>Hi {user.Name},</p>
-            <p>Click the link below to reset your password:</p>
-            <p><a href='{resetLink}' style='background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;'>Reset Password</a></p>
-            <p>If you did not request this, please ignore this email.</p>
-            </body>
-            </html>"
-            };
-
-            await _emailService.SendEmailAsync(emailMessage);
+                Content = BuildResetPasswordEmail(user.Name, resetLink)
+            });
 
             return Ok(new { message = "If this email exists, a reset link has been sent." });
         }
 
+        [HttpPost("resetpassword")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            var email = TempResetPasswordStore.GetEmail(request.Token);
+            if (email == null)
+                return BadRequest("Invalid or expired token.");
+
+            var user = await _userService.GetByEmailAsync(email);
+            if (user == null)
+                return BadRequest("User not found.");
+
+            // TODO: Hash password before saving in production
+            await _userService.UpdatePasswordAsync(user.Id, request.NewPassword);
+
+            return Ok(new { message = "Password successfully reset. You can now log in." });
+        }
+
+        private static string BuildConfirmationEmail(string name, string confirmationLink)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<html><body>");
+            sb.AppendLine($"<p>Hi <strong>{name}</strong>,</p>");
+            sb.AppendLine("<p>Thank you for registering at <strong>Movie App</strong>!</p>");
+            sb.AppendLine("<p>Please confirm your email by clicking the link below:</p>");
+            sb.AppendLine($"<p><a href='{confirmationLink}' style='background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;'>Confirm your email</a></p>");
+            sb.AppendLine("<p>If you did not register, please ignore this email.</p>");
+            sb.AppendLine("</body></html>");
+            return sb.ToString();
+        }
+
+        private static string BuildResetPasswordEmail(string name, string resetLink)
+        {
+            return $@"
+                <html><body>
+                <p>Hi {name},</p>
+                <p>Click the link below to reset your password:</p>
+                <p><a href='{resetLink}' style='background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;'>Reset Password</a></p>
+                <p>If you did not request this, please ignore this email.</p>
+                </body></html>";
+        }
+        public static class TempRegistrationStore
+        {
+            private static readonly Dictionary<string, RegisterRequest> _pending = new();
+
+            public static void Add(string token, RegisterRequest request)
+                => _pending[token] = request;
+
+            public static RegisterRequest? Get(string token)
+            {
+                if (!_pending.TryGetValue(token, out var request)) return null;
+                _pending.Remove(token);
+                return request;
+            }
+        }
+
         public static class TempResetPasswordStore
         {
-            public static Dictionary<string, string> PendingResets = new();
+            private static readonly Dictionary<string, string> _pending = new();
 
-            public static void Add(string token, string email) => PendingResets[token] = email;
+            public static void Add(string token, string email)
+                => _pending[token] = email;
 
             public static string? GetEmail(string token)
             {
-                if (PendingResets.TryGetValue(token, out var email))
-                {
-                    PendingResets.Remove(token); // remove after retrieval
-                    return email;
-                }
-                return null;
+                if (!_pending.TryGetValue(token, out var email)) return null;
+                _pending.Remove(token);
+                return email;
             }
         }
 
@@ -215,25 +222,7 @@ namespace MoviesAPI.Controllers
             public string Token { get; set; }
             public string NewPassword { get; set; }
         }
-
-        [HttpPost("ResetPassword")]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
-        {
-            var email = TempResetPasswordStore.GetEmail(request.Token);
-            if (email == null)
-                return BadRequest("Invalid or expired token.");
-
-            var user = await _userRepository.GetUserByEmailAsync(email);
-            if (user == null)
-                return BadRequest("User not found.");
-
-            // Update password
-            user.Password = request.NewPassword; // in production, hash it!
-            await _userRepository.UpdateUserPasswordAsync(user.Id, request.NewPassword);
-
-            return Ok(new { message = "Password successfully reset. You can now log in." });
-        }
-
-
     }
+
+
 }

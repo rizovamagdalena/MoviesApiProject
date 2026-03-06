@@ -1,13 +1,13 @@
 ﻿using MoviesAPI.Models;
 
-namespace MoviesAPI.Repositories.Interface
+namespace MoviesAPI.Service.Interface
 {
-    public interface IHallRepository
+    public interface IHallService
     {
         Task<List<HallDto>> GetAllAsync();
         Task<HallDto?> GetByIdAsync(int hallId);
         Task<List<HallSeatDto>> GetSeatsByHallIdAsync(int hallId);
+        Task<List<string>> GetAvailableTimeSlotsAsync(int hallId, DateOnly date); 
+
     }
-
-
 }

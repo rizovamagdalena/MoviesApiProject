@@ -9,73 +9,113 @@ namespace MoviesAPI.Repositories.Implementation
 {
     public class UserRepository : IUserRepository
     {
-        private readonly DBSettings _dbSettings;
+        private readonly IDbConnectionFactory _connectionFactory;
 
-        public UserRepository(IOptions<DBSettings> dbSettings)
+        private const string BaseSelect = @"
+            SELECT id, name, phone, username, password, email, active, role 
+            FROM users";
+
+        public UserRepository(IDbConnectionFactory connectionFactory)
         {
-            _dbSettings = dbSettings.Value;
+            _connectionFactory = connectionFactory;
         }
 
-        public async Task<IEnumerable<User>> GetUsersAsync()
+        public async Task<IEnumerable<User>> GetAllAsync()
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,email,active,role FROM users";
-
-            var result = await conn.QueryAsync<User>(sql);
-            return result;
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.QueryAsync<User>(BaseSelect);
         }
 
-        public async Task<User> GetUserAsync(long id)
+        public async Task<User?> GetByIdAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,email,active,role FROM users WHERE id = @id";
-
-            var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { id });
-            return user;
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.QueryFirstOrDefaultAsync<User>(
+                $"{BaseSelect} WHERE id = @Id;", new { Id = id });
         }
 
-        public async Task<User> GetUserByUsername(string username)
+        public async Task<User?> GetByUsernameAsync(string username)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT id, name, phone, username, password,email,active,role FROM users WHERE username = @username";
-
-            var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { username });
-            return user;
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.QueryFirstOrDefaultAsync<User>(
+                $"{BaseSelect} WHERE username = @Username;", new { Username = username });
         }
 
-        public async Task<UserProfile> GetUserForUpdateAsync(long id)
+        public async Task<User?> GetByEmailAsync(string email)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT name, phone, username FROM users WHERE id = @id";
-
-            var updateUser = await conn.QueryFirstOrDefaultAsync<UserProfile>(sql, new { id });
-            return updateUser;
-
+            using var conn = _connectionFactory.CreateConnection();
+            string sql = @"
+                SELECT id, name, phone, username, password, email, active AS ""IsActive"", role
+                FROM users WHERE email = @Email;";
+            return await conn.QueryFirstOrDefaultAsync<User>(sql, new { Email = email });
         }
 
-        public async Task<int> CreateUserAsync(RegisterRequest user)
+        public async Task<UserProfile?> GetForUpdateAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.QueryFirstOrDefaultAsync<UserProfile>(
+                "SELECT name, phone, username FROM users WHERE id = @Id;", new { Id = id });
+        }
+
+        public async Task<long?> GetUserIdByUsernameAsync(string username)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.ExecuteScalarAsync<long?>(
+                "SELECT id FROM users WHERE username = @Username;", new { Username = username });
+        }
+
+        public async Task<bool> IsEmailTakenAsync(string email)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            var count = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(1) FROM users WHERE email = @Email;", new { Email = email });
+            return count > 0;
+        }
+
+        public async Task<User?> GetByUsernameAndPasswordAsync(string username, string password)
+        {
+            using var conn = _connectionFactory.CreateConnection();
 
             string sql = @"
-                    INSERT INTO users(name, phone, username, password, email, active,emailconfirmed) 
-                    VALUES(@Name, @Phone, @Username, @Password, @Email, @IsActive, @EmailConfirmed) 
-                    RETURNING id;
-                ";
-            var id = await conn.ExecuteScalarAsync<int>(sql, user);
-            return id;
+                SELECT id, name, phone, username, password, active AS ""IsActive"", role
+                FROM users
+                WHERE username = @Username AND password = @Password;";
 
+            var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { Username = username, Password = password });
+
+            if (user == null) return null;
+
+            await conn.ExecuteAsync(
+                "UPDATE users SET active = true WHERE username = @Username;",
+                new { Username = username });
+
+            return user;
         }
 
-        public async Task<int> UpdateUserAsync( UserProfile updateUser)
+        public async Task<bool> LogoutAsync(string username)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
+            using var conn = _connectionFactory.CreateConnection();
+            var rows = await conn.ExecuteAsync(
+                "UPDATE users SET active = false WHERE username = @Username;",
+                new { Username = username });
+            return rows > 0;
+        }
 
-            string sql = @"UPDATE users
-                   SET name = @Name,
-                       phone = @Phone
-                   WHERE username = @Username";
+        public async Task<int> CreateAsync(RegisterRequest user)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            string sql = @"
+                INSERT INTO users(name, phone, username, password, email, active, emailconfirmed)
+                VALUES(@Name, @Phone, @Username, @Password, @Email, @IsActive, @EmailConfirmed)
+                RETURNING id;";
+            return await conn.ExecuteScalarAsync<int>(sql, user);
+        }
 
+        public async Task<int> UpdateAsync(UserProfile updateUser)
+        {
+            using var conn = _connectionFactory.CreateConnection();
+            string sql = @"
+                UPDATE users SET name = @Name, phone = @Phone
+                WHERE username = @Username;";
             return await conn.ExecuteAsync(sql, new
             {
                 updateUser.Name,
@@ -84,78 +124,20 @@ namespace MoviesAPI.Repositories.Implementation
             });
         }
 
-        public async Task<int> DeleteUserAsync(long id)
+        public async Task<int> DeleteAsync(long id)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = "delete from users where id = @id";
-
-            return await conn.ExecuteAsync(sql, new { id });
-
+            using var conn = _connectionFactory.CreateConnection();
+            return await conn.ExecuteAsync(
+                "DELETE FROM users WHERE id = @Id;", new { Id = id });
         }
 
-        public async Task<User> GetUserByUsernameAndPassword(string username, string password)
+        public async Task<bool> UpdatePasswordAsync(int userId, string newPassword)
         {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = @"SELECT id, name, phone, username, password,active AS ""IsActive"", role
-                         FROM users
-                         WHERE username = @username AND password = @password";
-
-            var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { username, password });
-
-            if (user == null)
-                return null;
-
-            string updateSql = @"UPDATE users SET active = true WHERE username = @username";
-            await conn.ExecuteAsync(updateSql, new { username });
-
-
-            return user;
+            using var conn = _connectionFactory.CreateConnection();
+            var rows = await conn.ExecuteAsync(
+                "UPDATE users SET password = @Password WHERE id = @UserId;",
+                new { Password = newPassword, UserId = userId });
+            return rows > 0;
         }
-
-        public async Task<bool> LogoutUser(string username)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = @"UPDATE users SET active = false WHERE username = @username";
-            int rowsAffected = await conn.ExecuteAsync(sql, new { username });
-
-            return rowsAffected > 0;
-        }
-
-        public async Task<bool> IsEmailTakenAsync(string email)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-            string sql = "SELECT COUNT(1) FROM users WHERE email = @Email;";
-            var count = await conn.ExecuteScalarAsync<int>(sql, new { Email = email });
-            return count > 0;
-        }
-
-        public async Task<User> GetUserByEmailAsync(string email)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = @"SELECT id, name, phone, username, password, email, active AS ""IsActive"", role
-                   FROM users
-                   WHERE email = @Email";
-
-            var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { Email = email });
-            return user;
-        }
-
-        public async Task<bool> UpdateUserPasswordAsync(int userId, string newPassword)
-        {
-            using var conn = new NpgsqlConnection(_dbSettings.PostgresDB);
-
-            string sql = @"UPDATE users
-                   SET password = @Password
-                   WHERE id = @UserId";
-
-            int rowsAffected = await conn.ExecuteAsync(sql, new { Password = newPassword, UserId = userId });
-            return rowsAffected > 0;
-        }
-
-
     }
 }

@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MoviesAPI.Models;
 using MoviesAPI.Repositories.Interface;
-using MoviesAPI.Service;
+using MoviesAPI.Service.Interface;
 
 namespace MoviesAPI.Controllers
 {

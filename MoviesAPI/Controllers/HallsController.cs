@@ -1,5 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using MoviesAPI.Models;
 using MoviesAPI.Repositories.Interface;
+using MoviesAPI.Service.Interface;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -9,68 +11,40 @@ namespace MoviesAPI.Controllers
     [ApiController]
     public class HallsController : ControllerBase
     {
-        private readonly IHallRepository _hallRepository;
-        private readonly IScreeningRepository _screeningRepository;
+        private readonly IHallService _hallService;
 
-        public HallsController(IHallRepository hallRepository, IScreeningRepository screeningRepository)
+        public HallsController(IHallService hallService)
         {
-            _hallRepository = hallRepository;
-            _screeningRepository = screeningRepository;
+            _hallService = hallService;
         }
 
-        // GET: api/halls
+        // GET api/halls
         [HttpGet]
-        public async Task<IActionResult> GetAllHalls()
-        {
-            var halls = await _hallRepository.GetAllHallsAsync();
-            return Ok(halls);
-        }
+        public async Task<ActionResult<List<HallDto>>> GetAll()
+            => Ok(await _hallService.GetAllAsync());
 
-        // GET api/halls/5
+        // GET api/halls/2
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetHallById(int id)
+        public async Task<ActionResult<HallDto>> GetById(int id)
         {
-            var hall = await _hallRepository.GetHallByIdAsync(id);
-            if (hall == null) return NotFound();
-            return Ok(hall);
+            var hall = await _hallService.GetByIdAsync(id);
+            return hall is null ? NotFound() : Ok(hall);
         }
 
-        // GET: api/halls/1/seats
+        // GET api/halls/3/seats
         [HttpGet("{id}/seats")]
-        public async Task<IActionResult> GetSeatsByHallId(int id)
+        public async Task<ActionResult<List<HallSeatDto>>> GetSeats(int id)
         {
-            var seats = await _hallRepository.GetSeatsByHallIdAsync(id);
+            var seats = await _hallService.GetSeatsByHallIdAsync(id);
             return Ok(seats);
         }
 
-
-        // GET: api/halls/1/freeslots/01-01-2001
+        // GET api/halls/3/freeslots/2026-03-06
         [HttpGet("{hallId}/freeslots/{date}")]
-        public async Task<IActionResult> GetAvailableTimeSlots(int hallId, DateOnly date)
+        public async Task<ActionResult<List<string>>> GetAvailableTimeSlots(int hallId, DateOnly date)
         {
-            var allSlots = new List<TimeOnly> {
-                new TimeOnly(11,0,0),
-                new TimeOnly(14,0,0),
-                new TimeOnly(17,0,0),
-                new TimeOnly(20,0,0),
-                new TimeOnly(23,0,0)
-            };
-
-            var bookedScreenings = await _screeningRepository.GetScreeningsByHallAndDateAsync(hallId, date);
-
-
-            var bookedTimes = bookedScreenings
-                  .Select(s => new TimeOnly(s.Screening_Date_Time.Hour, s.Screening_Date_Time.Minute, 0))
-                  .ToList();
-
-            var allowedSlots = allSlots
-                    .Where(t => !bookedTimes.Contains(t))
-                    .Select(t => t.ToString("HH:mm"))
-                    .ToList();
-            //System.Diagnostics.Debug.WriteLine($"allowedSlots: {allowedSlots}");
-
-
-            return Ok(allowedSlots);
+            var slots = await _hallService.GetAvailableTimeSlotsAsync(hallId, date);
+            return Ok(slots);
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using MoviesAPI.Models.System;
+using MoviesAPI.Service.Interface;
 using sib_api_v3_sdk.Api;
 using sib_api_v3_sdk.Client;
 using sib_api_v3_sdk.Model;
@@ -7,7 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace MoviesAPI.Service
+namespace MoviesAPI.Service.Implementation
 {
     public class EmailService : IEmailService
     {
